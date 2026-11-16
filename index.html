@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>STOCK TESORERIA</title>
+<title>Almacén</title>
 <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/tesoreriauni/AIT/main/logo.png">
 <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/tesoreriauni/AIT/main/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,6 +101,14 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:99px;font-weight:700;font-size:.9rem;box-shadow:var(--shadow);z-index:20;max-width:92vw}
 #toast.err{background:var(--bad);color:#fff}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.who{color:var(--mut);font-weight:700;font-size:.85rem;margin-right:10px}
+.marq{background:#c4203f;color:#fff;border-radius:14px;overflow:hidden;margin-bottom:18px;font-weight:800}
+.marq .track{display:inline-flex;white-space:nowrap;padding:11px 0;animation:mq 24s linear infinite}
+.marq .track span{min-width:50vw;padding:0 40px;text-align:center}
+.marq:hover .track{animation-play-state:paused}
+@keyframes mq{to{transform:translateX(-25%)}}
+@media(prefers-reduced-motion:reduce){.marq .track{animation:none;white-space:normal;flex-wrap:wrap}.marq .track span{min-width:0}}
+.anul td{opacity:.6}.anul td.cat,.anul td.n{text-decoration:line-through}
 </style></head>
 <body>
 
@@ -128,7 +136,7 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 <main id="app" hidden>
   <header class="top">
     <div class="logo"><img src="https://raw.githubusercontent.com/tesoreriauni/AIT/main/logo.png" alt="" onerror="this.style.display='none'">Almacén</div>
-    <button class="btn ghost" id="logout" type="button">Salir</button>
+    <div style="display:flex;align-items:center"><span id="who" class="who"></span><button class="btn ghost" id="logout" type="button">Salir</button></div>
   </header>
   <nav class="tabs" id="tabs">
     <button type="button" data-tab="main" class="on">Principal</button>
@@ -139,6 +147,7 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 
   <!-- PRINCIPAL: solo consulta -->
   <section id="t-main">
+    <div class="marq" id="marq" role="alert" hidden><div class="track" id="marqTrack"></div></div>
     <div class="kpis">
       <button class="kpi" data-f="all" type="button"><span>Productos</span><b id="sProd">0</b></button>
       <button class="kpi" data-f="ok" type="button"><span>Unidades en stock</span><b id="sUnits">0</b></button>
@@ -198,7 +207,7 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
       <div class="panel">
         <h3>Últimas salidas</h3>
         <div class="scroll"><table>
-          <thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Persona</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Persona</th><th></th></tr></thead>
           <tbody id="bRecent"></tbody></table></div>
         <div id="eRecent" class="empty" hidden>Todavía no hay salidas registradas.</div>
       </div>
@@ -259,14 +268,14 @@ const LOGIN_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/login";
 const API_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/discointerno";
 const TOKKEY = "almacen_token_v1";
 const $ = id => document.getElementById(id);
-let items = [], movs = [], editingId = null, inId = null, started = false, flt = "all", hflt = "all", tt;
+let role = "", me = "", lastMarq = "", items = [], movs = [], editingId = null, inId = null, started = false, flt = "all", hflt = "all", tt;
 
 const getToken = () => { try { return localStorage.getItem(TOKKEY); } catch(e){ return null; } };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const st = i => i.qty === 0 ? "out" : (i.qty <= i.min ? "low" : "ok");
 const LABEL = {ok:"Disponible", low:"Stock bajo", out:"Agotado"};
-const TL = {alta:"Alta", entrada:"Entrada", salida:"Salida", ajuste:"Ajuste", baja:"Baja"};
-const TC = {alta:"ok", entrada:"ok", salida:"ac", ajuste:"ne", baja:"out"};
+const TL = {alta:"Alta", entrada:"Entrada", salida:"Salida", ajuste:"Ajuste", baja:"Baja", anulacion:"Anulación"};
+const TC = {alta:"ok", entrada:"ok", salida:"ac", ajuste:"ne", baja:"out", anulacion:"ne"};
 const fdate = f => new Date(f).toLocaleString("es-MX", {dateStyle:"short", timeStyle:"short"});
 const fdelta = d => d > 0 ? `<span class="pos">+${d}</span>` : `<span class="neg">−${Math.abs(d)}</span>`;
 
@@ -309,7 +318,11 @@ function renderMain(){
   const list = items.filter(i => match(i, q) && (flt === "all" || st(i) === flt));
   $("bMain").innerHTML = list.map(i => { const s = st(i); return `<tr><td class="cat">${esc(i.cat)}</td><td><span class="chip ${s}">${LABEL[s]}</span></td><td class="n">${i.qty}</td><td class="hm">${i.min}</td></tr>`; }).join("");
   $("eMain").hidden = list.length > 0;
-  $("eMain").textContent = items.length ? "No hay productos con este filtro." : "Aún no hay productos. Agrégalos en la pestaña Productos.";
+  $("eMain").textContent = items.length ? "No hay productos con este filtro." : (role === "admin" ? "Aún no hay productos. Agrégalos en la pestaña Productos." : "Aún no hay productos en el almacén.");
+  const sinStock = items.filter(i => st(i) === "out");
+  $("marq").hidden = !sinStock.length;
+  const mq = sinStock.map(i => `<span>⚠ ${esc(i.cat)}: ya no hay en stock</span>`).join("").repeat(4);
+  if(mq !== lastMarq){ lastMarq = mq; $("marqTrack").innerHTML = mq; $("marqTrack").style.animationDuration = Math.max(16, sinStock.length * 8) + "s"; }
   $("sProd").textContent = items.length;
   $("sUnits").textContent = items.reduce((a,i) => a + i.qty, 0);
   $("sLow").textContent = items.filter(i => st(i) === "low").length;
@@ -348,8 +361,8 @@ function renderOut(){
   syncOut();
   const outs = movs.filter(m => m.tipo === "salida");
   $("personas").innerHTML = [...new Set(outs.map(m => m.persona).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join("");
-  const rec = outs.slice(-8).reverse();
-  $("bRecent").innerHTML = rec.map(m => `<tr><td>${fdate(m.fecha)}</td><td class="cat">${esc(m.producto)}</td><td class="n">${Math.abs(m.delta)}</td><td>${esc(m.persona || "")}</td></tr>`).join("");
+  const rec = outs.filter(m => !m.anulada).slice(-15).reverse();
+  $("bRecent").innerHTML = rec.map(m => `<tr><td>${fdate(m.fecha)}</td><td class="cat">${esc(m.producto)}</td><td class="n">${Math.abs(m.delta)}</td><td>${esc(m.persona || "")}</td><td>${role === "admin" ? `<button type="button" class="btn danger sm" data-id="${esc(m.id)}" data-n="${Math.abs(m.delta)}">Eliminar</button>` : ""}</td></tr>`).join("");
   $("eRecent").hidden = rec.length > 0;
 }
 $("oProd").addEventListener("change", syncOut);
@@ -365,15 +378,20 @@ $("outForm").addEventListener("submit", async e => {
   syncOut();
 });
 
+$("bRecent").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  if(confirm("¿Eliminar esta salida? Se devolverán " + b.dataset.n + " unidades al stock.")) run({action:"anular_salida", id:b.dataset.id}, "Salida eliminada y stock devuelto");
+});
+
 function histList(){
   const q = $("search3").value.trim().toLowerCase();
-  const g = {in:["alta","entrada"], out:["salida"], adj:["ajuste","baja"]}[hflt];
+  const g = {in:["alta","entrada"], out:["salida","anulacion"], adj:["ajuste","baja"]}[hflt];
   return movs.filter(m => (!g || g.includes(m.tipo)) && (!q || (m.producto + " " + (m.persona||"")).toLowerCase().includes(q))).slice().reverse();
 }
 function renderHist(){
   const list = histList();
-  $("bHist").innerHTML = list.slice(0, 300).map(m => `<tr>
-    <td>${fdate(m.fecha)}</td><td><span class="chip ${TC[m.tipo]}">${TL[m.tipo]}</span></td><td class="cat">${esc(m.producto)}</td>
+  $("bHist").innerHTML = list.slice(0, 300).map(m => `<tr class="${m.anulada ? "anul" : ""}">
+    <td>${fdate(m.fecha)}</td><td><span class="chip ${TC[m.tipo]}">${TL[m.tipo]}</span>${m.anulada ? ' <span class="chip ne">Eliminada</span>' : ""}</td><td class="cat">${esc(m.producto)}</td>
     <td class="n">${fdelta(m.delta)}</td><td>${esc(m.persona || "")}</td><td class="hm">${esc(m.nota || "")}</td><td class="hm">${m.stock}</td></tr>`).join("");
   $("eHist").hidden = list.length > 0;
   document.querySelectorAll("#segH button").forEach(b => b.classList.toggle("on", b.dataset.h === hflt));
@@ -453,8 +471,16 @@ async function callLogin(body){
   const r = await fetch(LOGIN_URL, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
   return {ok:r.ok, ...(await r.json().catch(() => ({})))};
 }
+function setSession(r){ role = r.role === "admin" ? "admin" : "operador"; me = r.user || ""; }
+function applyRole(){
+  const admin = role === "admin";
+  document.querySelector('#tabs [data-tab="prod"]').hidden = !admin;
+  if(!admin) $("t-prod").hidden = true;
+  $("who").textContent = me ? me + (admin ? " · administrador" : "") : "";
+  renderAll();
+}
 function showApp(){
-  $("login").hidden = true; $("app").hidden = false;
+  $("login").hidden = true; $("app").hidden = false; applyRole();
   if(started) return; started = true;
   run({action:"list"});
 }
@@ -467,13 +493,13 @@ $("loginForm").addEventListener("submit", async e => {
   $("loginMsg").textContent = ""; $("lBtn").disabled = true;
   try {
     const r = await callLogin({user:$("lUser").value.trim(), pass:$("lPass").value});
-    if(r.ok && r.token){ try { localStorage.setItem(TOKKEY, r.token); } catch(err){} $("lPass").value = ""; showApp(); }
+    if(r.ok && r.token){ try { localStorage.setItem(TOKKEY, r.token); } catch(err){} $("lPass").value = ""; setSession(r); showApp(); }
     else $("loginMsg").textContent = r.error || "Usuario o contraseña incorrectos.";
   } catch(err){ $("loginMsg").textContent = "No se pudo conectar con el servicio de acceso."; }
   $("lBtn").disabled = false;
 });
 const t0 = getToken();
-if(t0) callLogin({action:"verify", token:t0}).then(r => r.ok ? showApp() : showLogin()).catch(() => showLogin("No se pudo verificar la sesión."));
+if(t0) callLogin({action:"verify", token:t0}).then(r => r.ok ? (setSession(r), showApp()) : showLogin()).catch(() => showLogin("No se pudo verificar la sesión."));
 else showLogin();
 </script>
 </body>

@@ -109,6 +109,9 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 @keyframes mq{to{transform:translateX(-25%)}}
 @media(prefers-reduced-motion:reduce){.marq .track{animation:none;white-space:normal;flex-wrap:wrap}.marq .track span{min-width:0}}
 .anul td{opacity:.6}.anul td.cat,.anul td.n{text-decoration:line-through}
+.marq.req{background:var(--acc);color:var(--accink);cursor:pointer}
+.chip.pd{background:var(--warnbg);color:var(--warn)}
+.badge{display:inline-block;min-width:20px;padding:1px 6px;margin-left:6px;border-radius:99px;background:var(--bad);color:#fff;font-size:.75rem;font-weight:800;text-align:center}
 </style></head>
 <body>
 
@@ -142,8 +145,11 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
     <button type="button" data-tab="main" class="on">Principal</button>
     <button type="button" data-tab="prod">Productos</button>
     <button type="button" data-tab="out">Salidas</button>
+    <button type="button" data-tab="sol" hidden>Solicitar</button>
+    <button type="button" data-tab="req" hidden>Solicitudes<span class="badge" id="reqBadge" hidden>0</span></button>
     <button type="button" data-tab="hist">Historial</button>
   </nav>
+  <div class="marq req" id="marqReq" role="alert" tabindex="0" title="Ir a Solicitudes" hidden><div class="track" id="marqReqTrack"></div></div>
 
   <!-- PRINCIPAL: solo consulta -->
   <section id="t-main">
@@ -214,6 +220,47 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
     </div>
   </section>
 
+  <!-- SOLICITAR: los operadores piden productos al Almacén del Rectorado -->
+  <section id="t-sol" hidden>
+    <div class="og">
+      <form class="panel" id="rForm">
+        <h3>Solicitar un producto</h3>
+        <p class="hint" style="margin:-6px 0 14px">Escribe lo que necesitas. El administrador lo revisará y lo pedirá al Almacén del Rectorado.</p>
+        <div class="field"><label for="rProd">Producto que necesitas</label><input id="rProd" list="sugeridos" maxlength="40" required autocomplete="off"><datalist id="sugeridos"></datalist></div>
+        <div class="two">
+          <div class="field"><label for="rQty">Cantidad</label><input id="rQty" type="number" min="1" max="9999" step="1" value="1" required></div>
+          <div class="field"><label for="rNote">Nota (opcional)</label><input id="rNote" maxlength="120"></div>
+        </div>
+        <button class="btn" id="rBtn" type="submit" style="width:100%">Enviar solicitud</button>
+      </form>
+      <div class="panel">
+        <h3>Mis solicitudes</h3>
+        <div class="scroll"><table>
+          <thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Estado</th></tr></thead>
+          <tbody id="bSol"></tbody></table></div>
+        <div id="eSol" class="empty" hidden>Todavía no has enviado solicitudes.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLICITUDES: el administrador revisa y confirma -->
+  <section id="t-req" hidden>
+    <div class="panel">
+      <div class="bar">
+        <div class="seg" id="segR">
+          <button type="button" data-r="pend" class="on">Pendientes</button>
+          <button type="button" data-r="conf">En el Rectorado</button>
+          <button type="button" data-r="all">Todas</button>
+        </div>
+      </div>
+      <div class="scroll"><table>
+        <thead><tr><th>Fecha</th><th>Solicitante</th><th>Producto</th><th>Cant.</th><th class="hm">Nota</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="bReq"></tbody></table></div>
+      <div id="eReq" class="empty" hidden></div>
+      <p class="hint">Al confirmar, el producto se agrega al stock en cantidad 0 y queda marcado como pendiente de solicitud al Almacén del Rectorado. Cuando registres una entrada, el aviso desaparece.</p>
+    </div>
+  </section>
+
   <!-- HISTORIAL: todos los movimientos -->
   <section id="t-hist" hidden>
     <div class="panel">
@@ -268,7 +315,7 @@ const LOGIN_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/login";
 const API_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/discointerno";
 const TOKKEY = "almacen_token_v1";
 const $ = id => document.getElementById(id);
-let role = "", me = "", lastMarq = "", items = [], movs = [], editingId = null, inId = null, started = false, flt = "all", hflt = "all", tt;
+let role = "", me = "", items = [], movs = [], sols = [], rflt = "pend", editingId = null, inId = null, started = false, flt = "all", hflt = "all", tt;
 
 const getToken = () => { try { return localStorage.getItem(TOKKEY); } catch(e){ return null; } };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -276,6 +323,8 @@ const st = i => i.qty === 0 ? "out" : (i.qty <= i.min ? "low" : "ok");
 const LABEL = {ok:"Disponible", low:"Stock bajo", out:"Agotado"};
 const TL = {alta:"Alta", entrada:"Entrada", salida:"Salida", ajuste:"Ajuste", baja:"Baja", anulacion:"Anulación"};
 const TC = {alta:"ok", entrada:"ok", salida:"ac", ajuste:"ne", baja:"out", anulacion:"ne"};
+const SL = {pendiente:"Pendiente de revisión", confirmada:"Solicitada al Rectorado", atendida:"Atendida", rechazada:"Rechazada"};
+const SC = {pendiente:"low", confirmada:"ac", atendida:"ok", rechazada:"out"};
 const fdate = f => new Date(f).toLocaleString("es-MX", {dateStyle:"short", timeStyle:"short"});
 const fdelta = d => d > 0 ? `<span class="pos">+${d}</span>` : `<span class="neg">−${Math.abs(d)}</span>`;
 
@@ -294,7 +343,7 @@ async function api(body){
     throw new Error("Sesión vencida");
   }
   if(!r.ok) throw new Error(j.error || "Error " + r.status);
-  items = j.items; movs = j.movimientos || []; renderAll();
+  items = j.items; movs = j.movimientos || []; sols = j.solicitudes || []; renderAll();
   return j;
 }
 async function run(body, okMsg){
@@ -305,24 +354,28 @@ async function run(body, okMsg){
 // ---------- Pestañas ----------
 function setTab(t){
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  ["main","prod","out","hist"].forEach(n => $("t-" + n).hidden = n !== t);
+  ["main","prod","out","hist","sol","req"].forEach(n => $("t-" + n).hidden = n !== t);
 }
 $("tabs").addEventListener("click", e => { const b = e.target.closest("button"); if(b) setTab(b.dataset.tab); });
 
 // ---------- Render ----------
 const match = (i, q) => !q || i.cat.toLowerCase().includes(q);
-function renderAll(){ renderMain(); renderProd(); renderOut(); renderHist(); }
+function renderAll(){ renderMain(); renderProd(); renderOut(); renderHist(); renderSol(); renderReq(); }
+function setMarq(id, texts){
+  const box = $(id), track = $(id + "Track");
+  box.hidden = !texts.length;
+  const html = texts.map(t => `<span>${esc(t)}</span>`).join("").repeat(4);
+  if(box.dataset.k !== html){ box.dataset.k = html; track.innerHTML = html; track.style.animationDuration = Math.max(16, texts.length * 8) + "s"; }
+}
 
 function renderMain(){
   const q = $("search").value.trim().toLowerCase();
   const list = items.filter(i => match(i, q) && (flt === "all" || st(i) === flt));
-  $("bMain").innerHTML = list.map(i => { const s = st(i); return `<tr><td class="cat">${esc(i.cat)}</td><td><span class="chip ${s}">${LABEL[s]}</span></td><td class="n">${i.qty}</td><td class="hm">${i.min}</td></tr>`; }).join("");
+  $("bMain").innerHTML = list.map(i => { const s = st(i); return `<tr><td class="cat">${esc(i.cat)}</td><td><span class="chip ${s}">${LABEL[s]}</span>${i.pendiente ? ' <span class="chip pd">⏳ Pendiente de Rectorado</span>' : ""}</td><td class="n">${i.qty}</td><td class="hm">${i.min}</td></tr>`; }).join("");
   $("eMain").hidden = list.length > 0;
   $("eMain").textContent = items.length ? "No hay productos con este filtro." : (role === "admin" ? "Aún no hay productos. Agrégalos en la pestaña Productos." : "Aún no hay productos en el almacén.");
   const sinStock = items.filter(i => st(i) === "out");
-  $("marq").hidden = !sinStock.length;
-  const mq = sinStock.map(i => `<span>⚠ ${esc(i.cat)}: ya no hay en stock</span>`).join("").repeat(4);
-  if(mq !== lastMarq){ lastMarq = mq; $("marqTrack").innerHTML = mq; $("marqTrack").style.animationDuration = Math.max(16, sinStock.length * 8) + "s"; }
+  setMarq("marq", sinStock.map(i => i.pendiente ? `⏳ ${i.cat}: pendiente de solicitud al Almacén del Rectorado` : `⚠ ${i.cat}: ya no hay en stock`));
   $("sProd").textContent = items.length;
   $("sUnits").textContent = items.reduce((a,i) => a + i.qty, 0);
   $("sLow").textContent = items.filter(i => st(i) === "low").length;
@@ -337,7 +390,7 @@ function renderProd(){
   const q = $("search2").value.trim().toLowerCase();
   const list = items.filter(i => match(i, q));
   $("bProd").innerHTML = list.map(i => { const s = st(i); return `<tr>
-    <td class="cat">${esc(i.cat)}</td><td><span class="chip ${s}">${LABEL[s]}</span></td><td class="n">${i.qty}</td><td class="hm">${i.min}</td>
+    <td class="cat">${esc(i.cat)}</td><td><span class="chip ${s}">${LABEL[s]}</span>${i.pendiente ? ' <span class="chip pd">⏳ Pendiente de Rectorado</span>' : ""}</td><td class="n">${i.qty}</td><td class="hm">${i.min}</td>
     <td><div class="acts">
       <button type="button" class="btn ghost sm" data-act="in" data-id="${esc(i.id)}">Entrada</button>
       <button type="button" class="btn ghost sm" data-act="edit" data-id="${esc(i.id)}">Editar</button>
@@ -437,6 +490,47 @@ $("bProd").addEventListener("click", e => {
   } else if(b.dataset.act === "del" && confirm("¿Eliminar «" + item.cat + "»? Esta acción no se puede deshacer.")) run({action:"delete", id:item.id}, "Producto eliminado");
 });
 
+// ---------- Solicitudes ----------
+function renderSol(){
+  const list = sols.slice().reverse();
+  $("bSol").innerHTML = list.map(x => `<tr><td>${fdate(x.fecha)}</td><td class="cat">${esc(x.producto)}</td><td class="n">${x.qty}</td><td><span class="chip ${SC[x.estado]}">${SL[x.estado]}</span></td></tr>`).join("");
+  $("eSol").hidden = list.length > 0;
+  $("sugeridos").innerHTML = items.map(i => `<option value="${esc(i.cat)}">`).join("");
+}
+function renderReq(){
+  const admin = role === "admin";
+  const pend = admin ? sols.filter(x => x.estado === "pendiente") : [];
+  $("reqBadge").textContent = pend.length; $("reqBadge").hidden = !pend.length;
+  setMarq("marqReq", pend.map(x => `📥 Nueva solicitud de ${x.usuario}: ${x.producto}${x.qty > 1 ? " ×" + x.qty : ""}`));
+  const list = (admin ? sols : []).filter(x => rflt === "all" || (rflt === "pend" ? x.estado === "pendiente" : x.estado === "confirmada")).slice().reverse();
+  $("bReq").innerHTML = list.map(x => `<tr><td>${fdate(x.fecha)}</td><td>${esc(x.usuario)}</td><td class="cat">${esc(x.producto)}</td><td class="n">${x.qty}</td><td class="hm">${esc(x.nota || "")}</td>
+    <td><span class="chip ${SC[x.estado]}">${SL[x.estado]}</span></td>
+    <td>${x.estado === "pendiente" ? `<div class="acts"><button type="button" class="btn sm" data-act="ok" data-id="${esc(x.id)}">Confirmar</button><button type="button" class="btn danger sm" data-act="no" data-id="${esc(x.id)}">Rechazar</button></div>` : ""}</td></tr>`).join("");
+  $("eReq").hidden = list.length > 0;
+  $("eReq").textContent = rflt === "pend" ? "No hay solicitudes pendientes." : "No hay solicitudes que mostrar.";
+  document.querySelectorAll("#segR button").forEach(b => b.classList.toggle("on", b.dataset.r === rflt));
+}
+document.querySelectorAll("#segR button").forEach(b => b.addEventListener("click", () => { rflt = b.dataset.r; renderReq(); }));
+$("rForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const producto = $("rProd").value.trim(), qty = parseInt($("rQty").value, 10) || 1;
+  if(!producto) return;
+  $("rBtn").disabled = true;
+  const ok = await run({action:"solicitar", producto, qty, nota:$("rNote").value.trim()}, "Solicitud enviada al administrador");
+  $("rBtn").disabled = false;
+  if(ok){ $("rProd").value = ""; $("rQty").value = 1; $("rNote").value = ""; }
+});
+$("bReq").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.act === "ok") run({action:"confirmar_solicitud", id:b.dataset.id}, "Agregado al stock en cantidad 0, pendiente del Almacén del Rectorado");
+  else if(b.dataset.act === "no" && confirm("¿Rechazar esta solicitud?")) run({action:"rechazar_solicitud", id:b.dataset.id}, "Solicitud rechazada");
+});
+const goReq = () => { rflt = "pend"; setTab("req"); renderReq(); };
+$("marqReq").addEventListener("click", goReq);
+$("marqReq").addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); goReq(); } });
+// Refresco automático para que lleguen solicitudes y confirmaciones sin recargar
+setInterval(() => { if(started && !document.hidden && getToken()) api({action:"list"}).catch(() => {}); }, 30000);
+
 // ---------- Exportar / importar ----------
 function download(name, text, type){
   const a = document.createElement("a");
@@ -444,7 +538,7 @@ function download(name, text, type){
   a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 const toCsv = rows => "\ufeff" + rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(",")).join("\n");
-$("exportBtn").addEventListener("click", () => download("inventario.csv", toCsv([["Categoría","Cantidad","Mínimo","Estado"]].concat(items.map(i => [i.cat, i.qty, i.min, LABEL[st(i)]]))), "text/csv;charset=utf-8"));
+$("exportBtn").addEventListener("click", () => download("inventario.csv", toCsv([["Categoría","Cantidad","Mínimo","Estado"]].concat(items.map(i => [i.cat, i.qty, i.min, LABEL[st(i)] + (i.pendiente ? " (pendiente de Rectorado)" : "")]))), "text/csv;charset=utf-8"));
 $("exportH").addEventListener("click", () => download("historial.csv", toCsv([["Fecha","Tipo","Producto","Cantidad","Persona","Nota","Stock resultante","Usuario"]].concat(histList().map(m => [fdate(m.fecha), TL[m.tipo], m.producto, m.delta, m.persona||"", m.nota||"", m.stock, m.usuario||""]))), "text/csv;charset=utf-8"));
 $("backupBtn").addEventListener("click", () => download("respaldo-almacen.json", JSON.stringify(items, null, 2), "application/json"));
 $("importBtn").addEventListener("click", () => $("file").click());
@@ -475,12 +569,13 @@ function setSession(r){ role = r.role === "admin" ? "admin" : "operador"; me = r
 function applyRole(){
   const admin = role === "admin";
   document.querySelector('#tabs [data-tab="prod"]').hidden = !admin;
-  if(!admin) $("t-prod").hidden = true;
+  document.querySelector('#tabs [data-tab="req"]').hidden = !admin;
+  document.querySelector('#tabs [data-tab="sol"]').hidden = admin;
   $("who").textContent = me ? me + (admin ? " · administrador" : "") : "";
   renderAll();
 }
 function showApp(){
-  $("login").hidden = true; $("app").hidden = false; applyRole();
+  $("login").hidden = true; $("app").hidden = false; setTab("main"); applyRole();
   if(started) return; started = true;
   run({action:"list"});
 }

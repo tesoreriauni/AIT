@@ -110,6 +110,8 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 @media(prefers-reduced-motion:reduce){.marq .track{animation:none;white-space:normal;flex-wrap:wrap}.marq .track span{min-width:0}}
 .anul td{opacity:.6}.anul td.cat,.anul td.n{text-decoration:line-through}
 .marq.req{background:var(--acc);color:var(--accink);cursor:pointer}
+.marq.low{background:var(--warn);color:#fff}
+@media (prefers-color-scheme:dark){.marq.low{color:#0f1120}}
 .chip.pd{background:var(--warnbg);color:var(--warn)}
 .badge{display:inline-block;min-width:20px;padding:1px 6px;margin-left:6px;border-radius:99px;background:var(--bad);color:#fff;font-size:.75rem;font-weight:800;text-align:center}
 </style></head>
@@ -154,6 +156,7 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
   <!-- PRINCIPAL: solo consulta -->
   <section id="t-main">
     <div class="marq" id="marq" role="alert" hidden><div class="track" id="marqTrack"></div></div>
+    <div class="marq low" id="marqLow" role="status" hidden><div class="track" id="marqLowTrack"></div></div>
     <div class="kpis">
       <button class="kpi" data-f="all" type="button"><span>Productos</span><b id="sProd">0</b></button>
       <button class="kpi" data-f="ok" type="button"><span>Unidades en stock</span><b id="sUnits">0</b></button>
@@ -315,7 +318,7 @@ const LOGIN_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/login";
 const API_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/discointerno";
 const TOKKEY = "almacen_token_v1";
 const $ = id => document.getElementById(id);
-let role = "", me = "", items = [], movs = [], sols = [], rflt = "pend", editingId = null, inId = null, started = false, flt = "all", hflt = "all", tt;
+let reqSeq = 0, appliedSeq = 0, role = "", me = "", items = [], movs = [], sols = [], rflt = "pend", editingId = null, inId = null, started = false, flt = "all", hflt = "all", tt;
 
 const getToken = () => { try { return localStorage.getItem(TOKKEY); } catch(e){ return null; } };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -335,6 +338,7 @@ function toast(t, err){
 
 // ---------- Comunicación con la Edge Function ----------
 async function api(body){
+  const n = ++reqSeq;
   const r = await fetch(API_URL, {method:"POST", headers:{"Content-Type":"application/json","x-app-token":getToken()||""}, body:JSON.stringify(body)});
   const j = await r.json().catch(() => ({}));
   if(r.status === 401){
@@ -343,6 +347,7 @@ async function api(body){
     throw new Error("Sesión vencida");
   }
   if(!r.ok) throw new Error(j.error || "Error " + r.status);
+  if(n < appliedSeq) return j; appliedSeq = n;
   items = j.items; movs = j.movimientos || []; sols = j.solicitudes || []; renderAll();
   return j;
 }
@@ -375,6 +380,7 @@ function renderMain(){
   $("eMain").hidden = list.length > 0;
   $("eMain").textContent = items.length ? "No hay productos con este filtro." : (role === "admin" ? "Aún no hay productos. Agrégalos en la pestaña Productos." : "Aún no hay productos en el almacén.");
   const sinStock = items.filter(i => st(i) === "out");
+  setMarq("marqLow", items.filter(i => st(i) === "low").map(i => `⚡ ${i.cat}: stock bajo, quedan ${i.qty}`));
   setMarq("marq", sinStock.map(i => i.pendiente ? `⏳ ${i.cat}: pendiente de solicitud al Almacén del Rectorado` : `⚠ ${i.cat}: ya no hay en stock`));
   $("sProd").textContent = items.length;
   $("sUnits").textContent = items.reduce((a,i) => a + i.qty, 0);
@@ -528,8 +534,11 @@ $("bReq").addEventListener("click", e => {
 const goReq = () => { rflt = "pend"; setTab("req"); renderReq(); };
 $("marqReq").addEventListener("click", goReq);
 $("marqReq").addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); goReq(); } });
-// Refresco automático para que lleguen solicitudes y confirmaciones sin recargar
-setInterval(() => { if(started && !document.hidden && getToken()) api({action:"list"}).catch(() => {}); }, 30000);
+// Sincronización: cada 10 s y al volver a la pestaña, para que los cambios del administrador lleguen a todos sin recargar
+const refresh = () => { if(started && !document.hidden && getToken()) api({action:"list"}).catch(() => {}); };
+setInterval(refresh, 10000);
+document.addEventListener("visibilitychange", refresh);
+window.addEventListener("focus", refresh);
 
 // ---------- Exportar / importar ----------
 function download(name, text, type){

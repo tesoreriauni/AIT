@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Almacén</title>
+<title>STOCK TESORERIA</title>
+<link rel="icon" type="image/png" href="https://raw.githubusercontent.com/tesoreriauni/AIT/main/logo.png">
+<link rel="apple-touch-icon" href="https://raw.githubusercontent.com/tesoreriauni/AIT/main/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -37,6 +39,8 @@ label{display:block;font-size:.8rem;font-weight:700;color:var(--mut);margin-bott
 .brandside h1{font-size:clamp(2rem,4vw,3.4rem);line-height:1.05;margin:0;font-weight:800;letter-spacing:-.03em;max-width:12ch}
 .brandside p{opacity:.85;max-width:34ch;margin:14px 0 0}
 .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.1rem}
+.logo img{width:38px;height:38px;object-fit:contain;border-radius:10px;background:#fff;padding:3px}
+.brandside .logo img{width:48px;height:48px}
 .logo i{width:30px;height:30px;border-radius:9px;background:#fff;display:grid;place-items:center}
 .logo i::after{content:"";width:12px;height:12px;border-radius:3px;background:#5b4bff}
 .crates{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;max-width:340px}
@@ -102,7 +106,7 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 
 <main id="login" hidden>
   <section class="brandside">
-    <div class="logo"><i></i>Almacén</div>
+    <div class="logo"><img src="https://raw.githubusercontent.com/tesoreriauni/AIT/main/logo.png" alt="" onerror="this.style.display='none'">Almacén</div>
     <div>
       <h1>Tu stock, siempre a la vista.</h1>
       <p>Controla qué hay, qué se está acabando y a quién se le entregó cada cosa.</p>
@@ -123,7 +127,7 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 
 <main id="app" hidden>
   <header class="top">
-    <div class="logo"><i></i>Almacén</div>
+    <div class="logo"><img src="https://raw.githubusercontent.com/tesoreriauni/AIT/main/logo.png" alt="" onerror="this.style.display='none'">Almacén</div>
     <button class="btn ghost" id="logout" type="button">Salir</button>
   </header>
   <nav class="tabs" id="tabs">

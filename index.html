@@ -313,9 +313,12 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
 </dialog>
 <div id="toast" hidden role="status"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const LOGIN_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/login";
 const API_URL = "https://aehmbawfspczynsqvqqx.supabase.co/functions/v1/discointerno";
+const SUPABASE_URL = "https://aehmbawfspczynsqvqqx.supabase.co";
+const SUPABASE_ANON_KEY = ""; // <-- pega aquí la clave "anon public" de tu proyecto (Project Settings > API)
 const TOKKEY = "almacen_token_v1";
 const $ = id => document.getElementById(id);
 let reqSeq = 0, appliedSeq = 0, role = "", me = "", items = [], movs = [], sols = [], rflt = "pend", editingId = null, inId = null, started = false, flt = "all", hflt = "all", tt;
@@ -347,6 +350,7 @@ async function api(body){
     throw new Error("Sesión vencida");
   }
   if(!r.ok) throw new Error(j.error || "Error " + r.status);
+  if(body.action !== "list") notifyChange();
   if(n < appliedSeq) return j; appliedSeq = n;
   items = j.items; movs = j.movimientos || []; sols = j.solicitudes || []; renderAll();
   return j;
@@ -534,11 +538,26 @@ $("bReq").addEventListener("click", e => {
 const goReq = () => { rflt = "pend"; setTab("req"); renderReq(); };
 $("marqReq").addEventListener("click", goReq);
 $("marqReq").addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); goReq(); } });
-// Sincronización: cada 10 s y al volver a la pestaña, para que los cambios del administrador lleguen a todos sin recargar
-const refresh = () => { if(started && !document.hidden && getToken()) api({action:"list"}).catch(() => {}); };
-setInterval(refresh, 10000);
-document.addEventListener("visibilitychange", refresh);
-window.addEventListener("focus", refresh);
+// ---------- Sincronización por Realtime (sin consultas periódicas) ----------
+// Cuando alguien hace un cambio, avisa por un canal; los demás consultan UNA sola vez.
+let rt = null, rtReady = false, rtEver = false, dirty = false, rtTimer;
+const refresh = () => { if(started && getToken()) api({action:"list"}).catch(() => {}); };
+const scheduleRefresh = () => { clearTimeout(rtTimer); rtTimer = setTimeout(refresh, 400); };
+function startRealtime(){
+  if(rt || !SUPABASE_ANON_KEY || !window.supabase) return;
+  try {
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    rt = client.channel("almacen-cambios", {config:{broadcast:{self:false}}});
+    rt.on("broadcast", {event:"cambio"}, () => { if(document.hidden) dirty = true; else scheduleRefresh(); })
+      .subscribe(status => {
+        rtReady = status === "SUBSCRIBED";
+        if(rtReady){ if(rtEver) scheduleRefresh(); rtEver = true; } // al reconectar, recupera lo perdido
+      });
+  } catch(e){ rt = null; }
+}
+function notifyChange(){ if(rt && rtReady) rt.send({type:"broadcast", event:"cambio", payload:{}}); }
+// Al volver a la pestaña: solo consulta si llegó un aviso mientras estaba oculta (o si Realtime no está configurado)
+document.addEventListener("visibilitychange", () => { if(!document.hidden && (dirty || !rt)){ dirty = false; refresh(); } });
 
 // ---------- Exportar / importar ----------
 function download(name, text, type){
@@ -586,6 +605,7 @@ function applyRole(){
 function showApp(){
   $("login").hidden = true; $("app").hidden = false; setTab("main"); applyRole();
   if(started) return; started = true;
+  startRealtime();
   run({action:"list"});
 }
 function showLogin(msg){

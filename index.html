@@ -278,7 +278,7 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
         <button class="btn ghost sm" id="exportH" type="button">Exportar CSV</button>
       </div>
       <div class="scroll"><table>
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Persona</th><th class="hm">Nota</th><th class="hm">Stock</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Persona</th><th class="hm">Nota</th><th class="hm">Stock</th><th id="thHAct" hidden></th></tr></thead>
         <tbody id="bHist"></tbody></table></div>
       <div id="eHist" class="empty" hidden>No hay movimientos que mostrar.</div>
     </div>
@@ -455,12 +455,18 @@ function renderHist(){
   const list = histList();
   $("bHist").innerHTML = list.slice(0, 300).map(m => `<tr class="${m.anulada ? "anul" : ""}">
     <td>${fdate(m.fecha)}</td><td><span class="chip ${TC[m.tipo]}">${TL[m.tipo]}</span>${m.anulada ? ' <span class="chip ne">Eliminada</span>' : ""}</td><td class="cat">${esc(m.producto)}</td>
-    <td class="n">${fdelta(m.delta)}</td><td>${esc(m.persona || "")}</td><td class="hm">${esc(m.nota || "")}</td><td class="hm">${m.stock}</td></tr>`).join("");
+    <td class="n">${fdelta(m.delta)}</td><td>${esc(m.persona || "")}</td><td class="hm">${esc(m.nota || "")}</td><td class="hm">${m.stock}</td>${role === "admin" ? `<td><button type="button" class="btn danger sm" data-act="delh" data-id="${esc(m.id)}" data-t="${m.tipo}">Borrar</button></td>` : ""}</tr>`).join("");
+  $("thHAct").hidden = role !== "admin";
   $("eHist").hidden = list.length > 0;
   document.querySelectorAll("#segH button").forEach(b => b.classList.toggle("on", b.dataset.h === hflt));
 }
 document.querySelectorAll("#segH button").forEach(b => b.addEventListener("click", () => { hflt = b.dataset.h; renderHist(); }));
 $("search3").addEventListener("input", renderHist);
+$("bHist").addEventListener("click", e => {
+  const b = e.target.closest('button[data-act="delh"]'); if(!b) return;
+  const extra = b.dataset.t === "salida" ? " Esto no devuelve unidades al stock; para devolverlas usa «Eliminar» en la pestaña Salidas." : " El stock no cambia.";
+  if(confirm("¿Borrar este registro del historial?" + extra)) run({action:"borrar_movimiento", id:b.dataset.id}, "Registro borrado del historial");
+});
 
 // ---------- Productos: agregar, editar, eliminar, entrada ----------
 function openForm(item){
@@ -515,7 +521,7 @@ function renderReq(){
   const list = (admin ? sols : []).filter(x => rflt === "all" || (rflt === "pend" ? x.estado === "pendiente" : x.estado === "confirmada")).slice().reverse();
   $("bReq").innerHTML = list.map(x => `<tr><td>${fdate(x.fecha)}</td><td>${esc(x.usuario)}</td><td class="cat">${esc(x.producto)}</td><td class="n">${x.qty}</td><td class="hm">${esc(x.nota || "")}</td>
     <td><span class="chip ${SC[x.estado]}">${SL[x.estado]}</span></td>
-    <td>${x.estado === "pendiente" ? `<div class="acts"><button type="button" class="btn sm" data-act="ok" data-id="${esc(x.id)}">Confirmar</button><button type="button" class="btn danger sm" data-act="no" data-id="${esc(x.id)}">Rechazar</button></div>` : ""}</td></tr>`).join("");
+    <td><div class="acts">${x.estado === "pendiente" ? `<button type="button" class="btn sm" data-act="ok" data-id="${esc(x.id)}">Confirmar</button><button type="button" class="btn danger sm" data-act="no" data-id="${esc(x.id)}">Rechazar</button>` : ""}<button type="button" class="btn ghost sm" data-act="del" data-id="${esc(x.id)}">Borrar</button></div></td></tr>`).join("");
   $("eReq").hidden = list.length > 0;
   $("eReq").textContent = rflt === "pend" ? "No hay solicitudes pendientes." : "No hay solicitudes que mostrar.";
   document.querySelectorAll("#segR button").forEach(b => b.classList.toggle("on", b.dataset.r === rflt));
@@ -534,6 +540,7 @@ $("bReq").addEventListener("click", e => {
   const b = e.target.closest("button"); if(!b) return;
   if(b.dataset.act === "ok") run({action:"confirmar_solicitud", id:b.dataset.id}, "Agregado al stock en cantidad 0, pendiente del Almacén del Rectorado");
   else if(b.dataset.act === "no" && confirm("¿Rechazar esta solicitud?")) run({action:"rechazar_solicitud", id:b.dataset.id}, "Solicitud rechazada");
+  else if(b.dataset.act === "del" && confirm("¿Borrar esta solicitud? Desaparece también de la lista del usuario. El stock y los avisos de pendiente no cambian.")) run({action:"borrar_solicitud", id:b.dataset.id}, "Solicitud borrada");
 });
 const goReq = () => { rflt = "pend"; setTab("req"); renderReq(); };
 $("marqReq").addEventListener("click", goReq);

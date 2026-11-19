@@ -224,7 +224,9 @@ dialog h2{margin:0 0 18px;font-size:1.3rem;font-weight:800}
         <div class="field"><label for="oProd">Producto</label><select id="oProd"></select></div>
         <div class="two">
           <div class="field"><label for="oQty">Cantidad</label><input id="oQty" type="number" min="1" step="1" required><div class="hint" id="oHint"></div></div>
-          <div class="field"><label for="oWho">Persona que lo solicita</label><input id="oWho" list="personas" maxlength="60" required autocomplete="off"><datalist id="personas"></datalist></div>
+          <div class="field"><label for="oWhoSel">Persona que lo solicita</label>
+            <select id="oWhoSel" required></select>
+          </div>
         </div>
         <div class="field"><label for="oNote">Nota (opcional)</label><input id="oNote" maxlength="120"></div>
         <button class="btn" id="oBtn" type="submit" style="width:100%">Registrar salida</button>
@@ -433,6 +435,10 @@ function syncOut(){
   $("oHint").textContent = it ? "Disponible: " + it.qty : "";
   $("oBtn").disabled = !it;
 }
+// Personas autorizadas para las salidas. Si cambias esta lista, cámbiala también en la función discointerno (const PERSONAS)
+const PERSONAS = ["Irma Lopez", "Mathias Gonzalez", "Mirian Aquino", "Cynthia Gonzalez", "Carlos Gonzalez"];
+$("oWhoSel").innerHTML = `<option value="">Selecciona la persona…</option>` + PERSONAS.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+const quienSalida = () => $("oWhoSel").value;
 function renderOut(){
   const sel = $("oProd"), cur = sel.value;
   const av = items.filter(i => i.qty > 0).sort((a,b) => a.cat.localeCompare(b.cat, "es"));
@@ -440,7 +446,6 @@ function renderOut(){
   if(av.some(i => i.id === cur)) sel.value = cur;
   syncOut();
   const outs = movs.filter(m => m.tipo === "salida");
-  $("personas").innerHTML = [...new Set(outs.map(m => m.persona).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join("");
   const rec = outs.filter(m => !m.anulada).slice(-15).reverse();
   $("bRecent").innerHTML = rec.map(m => `<tr><td>${fdate(m.fecha)}</td><td class="cat">${esc(m.producto)}</td><td class="n">${Math.abs(m.delta)}</td><td>${esc(m.persona || "")}</td><td><div class="acts"><button type="button" class="btn ghost sm" data-act="pdf" data-id="${esc(m.id)}" title="Descargar constancia de retiro en PDF">PDF</button>${role === "admin" ? `<button type="button" class="btn danger sm" data-act="del" data-id="${esc(m.id)}" data-n="${Math.abs(m.delta)}">Eliminar</button>` : ""}</div></td></tr>`).join("");
   $("eRecent").hidden = rec.length > 0;
@@ -449,12 +454,12 @@ $("oProd").addEventListener("change", syncOut);
 $("outForm").addEventListener("submit", async e => {
   e.preventDefault();
   const it = items.find(i => i.id === $("oProd").value);
-  const qty = parseInt($("oQty").value, 10), who = $("oWho").value.trim();
+  const qty = parseInt($("oQty").value, 10), who = quienSalida();
   if(!it || !(qty >= 1) || !who) return;
   if(qty > it.qty){ toast("Solo hay " + it.qty + " disponibles de " + it.cat, true); return; }
   $("oBtn").disabled = true;
   const ok = await run({action:"salida", id:it.id, qty, persona:who, nota:$("oNote").value.trim()}, `Salida registrada: ${qty} × ${it.cat} para ${who}`);
-  if(ok){ $("oQty").value = ""; $("oWho").value = ""; $("oNote").value = ""; }
+  if(ok){ $("oQty").value = ""; $("oWhoSel").value = ""; $("oNote").value = ""; }
   syncOut();
 });
 

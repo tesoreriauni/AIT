@@ -345,8 +345,8 @@ const st = i => i.qty === 0 ? "out" : (i.qty <= i.min ? "low" : "ok");
 const LABEL = {ok:"Disponible", low:"Stock bajo", out:"Agotado"};
 const TL = {alta:"Alta", entrada:"Entrada", salida:"Salida", ajuste:"Ajuste", baja:"Baja", anulacion:"Anulación"};
 const TC = {alta:"ok", entrada:"ok", salida:"ac", ajuste:"ne", baja:"out", anulacion:"ne"};
-const SL = {pendiente:"Pendiente de revisión", confirmada:"Solicitada al Rectorado", atendida:"Atendida", rechazada:"Rechazada"};
-const SC = {pendiente:"low", confirmada:"ac", atendida:"ok", rechazada:"out"};
+const SL = {pendiente:"Pendiente de revisión", confirmada:"Solicitada al Rectorado", atendida:"Atendida", rechazada:"Rechazada", anulada:"Anulada"};
+const SC = {pendiente:"low", confirmada:"ac", atendida:"ok", rechazada:"out", anulada:"ne"};
 const fdate = f => new Date(f).toLocaleString("es-MX", {dateStyle:"short", timeStyle:"short"});
 const fdelta = d => d > 0 ? `<span class="pos">+${d}</span>` : `<span class="neg">−${Math.abs(d)}</span>`;
 
@@ -644,6 +644,13 @@ function renderSol(){
   $("eSol").hidden = list.length > 0;
   $("sugeridos").innerHTML = items.map(i => `<option value="${esc(i.cat)}">`).join("");
 }
+function accSol(x){
+  const b = (cls, act, txt) => `<button type="button" class="btn ${cls} sm" data-act="${act}" data-id="${esc(x.id)}">${txt}</button>`;
+  if(x.estado === "pendiente") return b("", "ok", "Confirmar") + b("danger", "no", "Rechazar");
+  if(x.estado === "confirmada") return b("ghost", "des", "Desaprobar") + b("danger", "rec", "Rechazar") + b("ghost", "anu", "Anular");
+  if(x.estado === "rechazada" || x.estado === "anulada") return b("ghost", "reab", "Reabrir");
+  return "";
+}
 function renderReq(){
   const admin = role === "admin";
   const pend = admin ? sols.filter(x => x.estado === "pendiente") : [];
@@ -652,7 +659,7 @@ function renderReq(){
   const list = (admin ? sols : []).filter(x => rflt === "all" || (rflt === "pend" ? x.estado === "pendiente" : x.estado === "confirmada")).slice().reverse();
   $("bReq").innerHTML = list.map(x => `<tr><td>${fdate(x.fecha)}</td><td>${esc(x.usuario)}</td><td class="cat">${esc(x.producto)}</td><td class="n">${x.qty}</td><td class="hm">${esc(x.nota || "")}</td>
     <td><span class="chip ${SC[x.estado]}">${SL[x.estado]}</span></td>
-    <td><div class="acts">${x.estado === "pendiente" ? `<button type="button" class="btn sm" data-act="ok" data-id="${esc(x.id)}">Confirmar</button><button type="button" class="btn danger sm" data-act="no" data-id="${esc(x.id)}">Rechazar</button>` : ""}<button type="button" class="btn ghost sm" data-act="del" data-id="${esc(x.id)}">Borrar</button></div></td></tr>`).join("");
+    <td><div class="acts">${accSol(x)}<button type="button" class="btn ghost sm" data-act="del" data-id="${esc(x.id)}">Borrar</button></div></td></tr>`).join("");
   $("eReq").hidden = list.length > 0;
   $("eReq").textContent = rflt === "pend" ? "No hay solicitudes pendientes." : "No hay solicitudes que mostrar.";
   document.querySelectorAll("#segR button").forEach(b => b.classList.toggle("on", b.dataset.r === rflt));
@@ -671,6 +678,10 @@ $("bReq").addEventListener("click", e => {
   const b = e.target.closest("button"); if(!b) return;
   if(b.dataset.act === "ok") run({action:"confirmar_solicitud", id:b.dataset.id}, "Agregado al stock en cantidad 0, pendiente del Almacén del Rectorado");
   else if(b.dataset.act === "no" && confirm("¿Rechazar esta solicitud?")) run({action:"rechazar_solicitud", id:b.dataset.id}, "Solicitud rechazada");
+  else if(b.dataset.act === "des" && confirm("¿Desaprobar esta solicitud? Vuelve a Pendiente de revisión. Si el producto se creó con esta aprobación y sigue en cantidad 0, se quita del stock.")) run({action:"revisar_solicitud", id:b.dataset.id, a:"desaprobar"}, "Solicitud desaprobada: vuelve a pendiente");
+  else if(b.dataset.act === "rec" && confirm("¿Rechazar esta solicitud aprobada? Se quita el aviso de pendiente del stock y el usuario verá «Rechazada».")) run({action:"revisar_solicitud", id:b.dataset.id, a:"rechazar"}, "Solicitud rechazada");
+  else if(b.dataset.act === "anu" && confirm("¿Anular esta solicitud? Ya no se pedirá al Almacén del Rectorado; se quita el aviso de pendiente del stock y el usuario verá «Anulada».")) run({action:"revisar_solicitud", id:b.dataset.id, a:"anular"}, "Solicitud anulada");
+  else if(b.dataset.act === "reab") run({action:"revisar_solicitud", id:b.dataset.id, a:"reabrir"}, "Solicitud reabierta: vuelve a pendiente");
   else if(b.dataset.act === "del" && confirm("¿Borrar esta solicitud? Desaparece también de la lista del usuario. El stock y los avisos de pendiente no cambian.")) run({action:"borrar_solicitud", id:b.dataset.id}, "Solicitud borrada");
 });
 const goReq = () => { rflt = "pend"; setTab("req"); renderReq(); };
